@@ -298,7 +298,6 @@ fix-codebase: ## Fix and format the entire codebase
 		-e FIX_MARKDOWN=true \
 		-e FIX_MARKDOWN_PRETTIER=true \
 		-e FIX_NATURAL_LANGUAGE=true \
-		-e FIX_RUBY=true \
 		-e FIX_SHELL_SHFMT=true \
 		-e FIX_YAML_PRETTIER=true \
 		-e GITLEAKS_CONFIG_FILE=".gitleaks-ignore-tests.toml" \
@@ -354,7 +353,7 @@ lint-subset-files-enable-expensive-io-checks: ## Lint a small subset of files in
 		$(SUPER_LINTER_TEST_CONTAINER_URL)
 
 .PHONY: test-lib
-test-lib: test-globals-languages test-linter-rules test-build-file-list test-detect-files test-github-event test-setup-ssh test-validation test-output test-linter-commands test-linter-versions ## Test super-linter libs and globals
+test-lib: test-globals-languages test-linter-rules test-build-file-list test-get-github-variables test-detect-files test-github-event test-setup-ssh test-validation test-output test-linter-commands test-linter-versions ## Test super-linter libs and globals
 
 .PHONY: test-globals-languages
 test-globals-languages: ## Test globals/languages.sh
@@ -389,6 +388,15 @@ test-build-file-list: ## Test buildFileList
 		-v "$(CURDIR):/tmp/lint" \
 		-w /tmp/lint \
 		--entrypoint /tmp/lint/test/lib/buildFileListTest.sh \
+		--rm \
+		$(SUPER_LINTER_TEST_CONTAINER_URL)
+
+.PHONY: test-get-github-variables
+test-get-github-variables: ## Test getGithubVariables
+	docker run \
+		-v "$(CURDIR):/tmp/lint" \
+		-w /tmp/lint \
+		--entrypoint /tmp/lint/test/lib/getGitHubVariablesTest.sh \
 		--rm \
 		$(SUPER_LINTER_TEST_CONTAINER_URL)
 

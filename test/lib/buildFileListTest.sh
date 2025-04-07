@@ -7,105 +7,104 @@ set -o pipefail
 # shellcheck source=/dev/null
 source "test/testUtils.sh"
 
-function InitGitRepositoryAndCommitFiles() {
-  local REPOSITORY_PATH="${1}" && shift
-  local FILES_TO_COMMIT="${1}" && shift
-  local COMMIT_FILE_INITIAL_COMMIT="${1}"
+GenerateFileDiffTest() {
+  local FUNCTION_NAME
+  FUNCTION_NAME="${1:-${FUNCNAME[0]}}"
+  info "${FUNCTION_NAME} start"
 
-  initialize_git_repository "${REPOSITORY_PATH}"
+  local GITHUB_WORKSPACE
+  GITHUB_WORKSPACE="$(mktemp -d)"
+  initialize_git_repository "${GITHUB_WORKSPACE}"
 
-  if [[ "${COMMIT_FILE_INITIAL_COMMIT}" == "true" ]]; then
-    touch "${REPOSITORY_PATH}/test-initial-commit.txt"
-    git -C "${REPOSITORY_PATH}" add .
+  local COMMITS_TO_CREATE="${2}"
+  local GITHUB_EVENT_NAME="${3}"
+  local SKIP_GITHUB_BEFORE_SHA_INIT="${4}"
+
+  local TEST_FORCE_CREATE_MERGE_COMMIT
+  if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+    TEST_FORCE_CREATE_MERGE_COMMIT="true"
+  else
+    TEST_FORCE_CREATE_MERGE_COMMIT="false"
   fi
-  git -C "${REPOSITORY_PATH}" commit --allow-empty -m "Initial commit"
-  GITHUB_BEFORE_SHA=$(git -C "${REPOSITORY_PATH}" rev-parse HEAD)
-  debug "GITHUB_BEFORE_SHA: ${GITHUB_BEFORE_SHA}"
-  GIT_ROOT_COMMIT_SHA="${GITHUB_BEFORE_SHA}"
-  debug "GIT_ROOT_COMMIT_SHA: ${GIT_ROOT_COMMIT_SHA}"
 
-  git -C "${REPOSITORY_PATH}" checkout -b test-branch
+  initialize_git_repository_contents "${GITHUB_WORKSPACE}" "${COMMITS_TO_CREATE}" "true" "${GITHUB_EVENT_NAME}" "${TEST_FORCE_CREATE_MERGE_COMMIT}" "${SKIP_GITHUB_BEFORE_SHA_INIT}"
 
-  for ((i = 1; i <= FILES_TO_COMMIT; i++)); do
-    local TEST_FILE_PATH="${REPOSITORY_PATH}/test${i}.txt"
-    touch "${TEST_FILE_PATH}"
-    git -C "${REPOSITORY_PATH}" add .
-    git -C "${REPOSITORY_PATH}" commit -m "Add ${TEST_FILE_PATH}"
+  # shellcheck source=/dev/null
+  source "lib/functions/buildFileList.sh"
+
+  GenerateFileDiff
+
+  RAW_FILE_ARRAY_SIZE=${#RAW_FILE_ARRAY[@]}
+
+  debug "RAW_FILE_ARRAY contents:\n${RAW_FILE_ARRAY[*]}"
+
+  # Subtract 1 to account for the initial commit
+  local -i EXPECTED_RAW_FILE_ARRAY_SIZE
+  local -i EXPECTED_RAW_FILE_ARRAY_SCAN_INDEX_START
+  if [[ "${COMMITS_TO_CREATE}" -eq 0 ]]; then
+    debug "This test considers the initial commit only"
+    EXPECTED_RAW_FILE_ARRAY_SIZE=1
+    EXPECTED_RAW_FILE_ARRAY_SCAN_INDEX_START=0
+  else
+    EXPECTED_RAW_FILE_ARRAY_SIZE="${COMMITS_TO_CREATE}"
+    EXPECTED_RAW_FILE_ARRAY_SCAN_INDEX_START=1
+  fi
+
+  if [ "${RAW_FILE_ARRAY_SIZE}" -ne "${EXPECTED_RAW_FILE_ARRAY_SIZE}" ]; then
+    fatal "RAW_FILE_ARRAY_SIZE does not have exactly ${EXPECTED_RAW_FILE_ARRAY_SIZE} elements, but rather: ${RAW_FILE_ARRAY_SIZE}"
+  else
+    debug "RAW_FILE_ARRAY_SIZE (${RAW_FILE_ARRAY_SIZE}) matches the expected value"
+  fi
+
+  local EXPECTED_FILE_PATH
+  for ((i = 0; i < RAW_FILE_ARRAY_SIZE; i++)); do
+    EXPECTED_FILE_PATH="${GITHUB_WORKSPACE}/test$((i + EXPECTED_RAW_FILE_ARRAY_SCAN_INDEX_START)).json"
+    if [[ "${RAW_FILE_ARRAY[${i}]}" != "${EXPECTED_FILE_PATH}" ]]; then
+      fatal "${RAW_FILE_ARRAY[${i}]} does not match the expected value: ${EXPECTED_FILE_PATH}"
+    else
+      debug "${RAW_FILE_ARRAY[${i}]} matches the expected value"
+    fi
   done
 
-  GITHUB_SHA=$(git -C "${REPOSITORY_PATH}" rev-parse HEAD)
-  debug "GITHUB_SHA: ${GITHUB_SHA}"
-  git -C "${REPOSITORY_PATH}" log --oneline "${DEFAULT_BRANCH}...${GITHUB_SHA}"
-}
-
-function GenerateFileDiffOneFileTest() {
-  local GITHUB_WORKSPACE
-  GITHUB_WORKSPACE="$(mktemp -d)"
-
-  local FILES_TO_COMMIT="${FILES_TO_COMMIT:-1}"
-  local COMMIT_FILE_INITIAL_COMMIT="${COMMIT_FILE_INITIAL_COMMIT:-"false"}"
-  InitGitRepositoryAndCommitFiles "${GITHUB_WORKSPACE}" "${FILES_TO_COMMIT}" "${COMMIT_FILE_INITIAL_COMMIT}"
-
-  # shellcheck source=/dev/null
-  source "lib/functions/buildFileList.sh"
-
-  GenerateFileDiff
-
-  RAW_FILE_ARRAY_SIZE=${#RAW_FILE_ARRAY[@]}
-  if [ "${RAW_FILE_ARRAY_SIZE}" -ne 1 ]; then
-    fatal "RAW_FILE_ARRAY does not have exactly one element: ${RAW_FILE_ARRAY_SIZE}"
-  fi
-
-  local FUNCTION_NAME
-  FUNCTION_NAME="${1:-${FUNCNAME[0]}}"
   notice "${FUNCTION_NAME} PASS"
 }
 
-function GenerateFileDiffOneFilePushEventTest() {
-  # shellcheck disable=SC2034
-  local GITHUB_EVENT_NAME="push"
-  local FILES_TO_COMMIT=1
-  local COMMIT_FILE_INITIAL_COMMIT="false"
-  GenerateFileDiffOneFileTest "${FUNCNAME[0]}"
+GenerateFileDiffOneFilePushEventTest() {
+  GenerateFileDiffTest "${FUNCNAME[0]}" 1 "push" "false"
 }
+GenerateFileDiffOneFilePushEventTest
 
-function GenerateFileDiffInitialCommitPushEventTest() {
-  # shellcheck disable=SC2034
-  local GITHUB_EVENT_NAME="push"
-  local FILES_TO_COMMIT=0
-  local COMMIT_FILE_INITIAL_COMMIT="true"
-  GenerateFileDiffOneFileTest "${FUNCNAME[0]}"
+GenerateFileDiffTwoFilesPushEventTest() {
+  GenerateFileDiffTest "${FUNCNAME[0]}" 2 "push" "false"
 }
+GenerateFileDiffTwoFilesPushEventTest
 
-function GenerateFileDiffTwoFilesTest() {
-  local GITHUB_WORKSPACE
-  GITHUB_WORKSPACE="$(mktemp -d)"
-  local FILES_TO_COMMIT=2
-
-  InitGitRepositoryAndCommitFiles "${GITHUB_WORKSPACE}" ${FILES_TO_COMMIT} "false"
-
-  # shellcheck source=/dev/null
-  source "lib/functions/buildFileList.sh"
-
-  GenerateFileDiff
-
-  RAW_FILE_ARRAY_SIZE=${#RAW_FILE_ARRAY[@]}
-  if [ "${RAW_FILE_ARRAY_SIZE}" -ne 2 ]; then
-    fatal "RAW_FILE_ARRAY does not have exactly ${FILES_TO_COMMIT} elements: ${RAW_FILE_ARRAY_SIZE}"
-  fi
-
-  local FUNCTION_NAME
-  FUNCTION_NAME="${1:-${FUNCNAME[0]}}"
-  notice "${FUNCTION_NAME} PASS"
+GenerateFileDiffInitialCommitPushEventTest() {
+  GenerateFileDiffTest "${FUNCNAME[0]}" 0 "push" "false"
 }
+GenerateFileDiffInitialCommitPushEventTest
 
-function GenerateFileDiffTwoFilesPushEventTest() {
-  # shellcheck disable=SC2034
-  local GITHUB_EVENT_NAME="push"
-  GenerateFileDiffTwoFilesTest "${FUNCNAME[0]}"
+GenerateFileDiffPushEventNoGitHubBeforeShaTest() {
+  GenerateFileDiffTest "${FUNCNAME[0]}" 2 "push" "true"
 }
+GenerateFileDiffPushEventNoGitHubBeforeShaTest
 
-function BuildFileArraysAnsibleGitHubWorkspaceTest() {
+GenerateFileDiffOneFilePullRequestEventTest() {
+  GenerateFileDiffTest "${FUNCNAME[0]}" 1 "pull_request" "false"
+}
+GenerateFileDiffOneFilePullRequestEventTest
+
+GenerateFileDiffTwoFilesPullRequestEventTest() {
+  GenerateFileDiffTest "${FUNCNAME[0]}" 2 "pull_request" "false"
+}
+GenerateFileDiffTwoFilesPullRequestEventTest
+
+GenerateFileDiffInitialCommitPullRequestEventTest() {
+  GenerateFileDiffTest "${FUNCNAME[0]}" 0 "pull_request" "false"
+}
+GenerateFileDiffTwoFilesPullRequestEventTest
+
+BuildFileArraysAnsibleGitHubWorkspaceTest() {
   local FUNCTION_NAME
   FUNCTION_NAME="${FUNCNAME[0]}"
   info "${FUNCTION_NAME} start"
@@ -146,11 +145,4 @@ function BuildFileArraysAnsibleGitHubWorkspaceTest() {
 
   notice "${FUNCTION_NAME} PASS"
 }
-
-GenerateFileDiffOneFileTest
-GenerateFileDiffOneFilePushEventTest
-GenerateFileDiffTwoFilesTest
-GenerateFileDiffTwoFilesPushEventTest
-GenerateFileDiffInitialCommitPushEventTest
-
 BuildFileArraysAnsibleGitHubWorkspaceTest

@@ -157,7 +157,7 @@ To run super-linter as a GitHub Action, you do the following:
              fetch-depth: 0
 
          - name: Super-linter
-           uses: super-linter/super-linter@v7.2.1 # x-release-please-version
+           uses: super-linter/super-linter@v7.3.0 # x-release-please-version
            env:
              # To report GitHub Actions status checks
              GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -285,6 +285,7 @@ You can configure Super-linter using the following environment variables:
 | **GITLEAKS_CONFIG_FILE**                        | `.gitleaks.toml`                                                             | Filename for [GitLeaks configuration](https://github.com/zricethezav/gitleaks#configuration) (ex: `.gitleaks.toml`)                                                                                                                                                                                                                  |
 | **GITLEAKS_LOG_LEVEL**                          | Gitleaks default log level                                                   | Gitleaks log level. Defaults to the Gitleaks default log level.                                                                                                                                                                                                                                                                      |
 | **GO_CONFIG_FILE**                              | `.golangci.yml`                                                              | Filename for [golangci-lint configuration](https://golangci-lint.run/usage/configuration/) (ex: `.golangci.toml`)                                                                                                                                                                                                                    |
+| **GROOVY_FAILON_LEVEL**                         | `warning`                                                                    | npm-groovy-lint failon level.                                                                                                                                                                                                                                                                                                        |
 | **IGNORE_GENERATED_FILES**                      | `false`                                                                      | If set to `true`, super-linter will ignore all the files with `@generated` marker but without `@not-generated` marker. Jscpd and Checkov ignore this variable. Use their include and ignore features to select or ignore the files to lint.                                                                                          |
 | **IGNORE_GITIGNORED_FILES**                     | `false`                                                                      | If set to `true`, super-linter will ignore all the files that are ignored by Git. Checkov ignores this variable. Use its include and ignore features to select or ignore the files to lint.                                                                                                                                          |
 | **JAVA_FILE_NAME**                              | `sun_checks.xml`                                                             | Filename for [Checkstyle configuration](https://checkstyle.sourceforge.io/config.html). Checkstyle embeds several configuration files, such as `sun_checks.xml`, `google_checks.xml` that you can use without providing your own configuration file.                                                                                 |
@@ -315,6 +316,7 @@ You can configure Super-linter using the following environment variables:
 | **RENOVATE_SHAREABLE_CONFIG_PRESET_FILE_NAMES** | not set                                                                      | Comma-separated filenames for [renovate shareable config preset](https://docs.renovatebot.com/config-presets/) (ex: `default.json`)                                                                                                                                                                                                  |
 | **REMOVE_ANSI_COLOR_CODES_FROM_OUTPUT**         | `false`                                                                      | If set to `true`, Super-linter removes ANSI color codes from linters stdout and stderr files, and from the Super-linter log file.                                                                                                                                                                                                    |
 | **RUBY_CONFIG_FILE**                            | `.ruby-lint.yml`                                                             | Filename for [rubocop configuration](https://docs.rubocop.org/rubocop/configuration.html) (ex: `.ruby-lint.yml`, `.rubocop.yml`)                                                                                                                                                                                                     |
+| **RUN_LOCAL**                                   | `false`                                                                      | Set this to `true` when running outside GitHub Actions or when you want to disable getting environment information from the GitHub Actions environment. For more information about running Super-linter outside GitHub Actions, see [Run Super-Linter outside GitHub Actions](#run-super-linter-outside-github-actions).             |
 | **RUST_CLIPPY_COMMAND_OPTIONS**                 | not set                                                                      | Additional options and arguments to pass to the command when running Clippy.                                                                                                                                                                                                                                                         |
 | **SAVE_SUPER_LINTER_OUTPUT**                    | `false`                                                                      | If set to `true`, Super-linter will save its output in the workspace. For more information, see [Super-linter outputs](#super-linter-outputs).                                                                                                                                                                                       |
 | **SAVE_SUPER_LINTER_SUMMARY**                   | `false`                                                                      | If set to `true`, Super-linter will save a summary. For more information, see [Summary outputs](#summary-outputs).                                                                                                                                                                                                                   |
@@ -543,7 +545,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Super-Linter
-        uses: super-linter/super-linter@v7.2.1 # x-release-please-version
+        uses: super-linter/super-linter@v7.3.0 # x-release-please-version
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Set your fix mode variables to true
@@ -615,6 +617,14 @@ For example, you can configure super-linter to load configuration files from the
 env:
   LINTER_RULES_PATH: config/lint
 ```
+
+In order to facilitate migrations from using standalone linters to super-linter,
+the following linters don't follow the convention described above in this
+section, but rather they use their own mechanism to discover and load
+configuration files. To configure these linters, see:
+
+- [Prettier](https://prettier.io/docs/en/configuration)
+- [Commitlint](https://commitlint.js.org/reference/configuration.html#config-via-file)
 
 Some of the linters that super-linter provides can be configured to disable
 certain rules or checks, and to ignore certain files or part of them.

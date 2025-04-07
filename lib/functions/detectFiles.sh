@@ -269,6 +269,20 @@ function IsGenerated() {
   fi
 }
 
+function IsNotSymbolicLink() {
+  local FILE="$1"
+
+  debug "Checking if ${FILE} is not a symbolic link..."
+
+  if [[ -L "${FILE}" ]]; then
+    debug "${FILE} is a symbolic link"
+    return 1
+  else
+    debug "${FILE} is NOT a symbolic link"
+    return 0
+  fi
+}
+
 # We need these functions when building the file list with parallel
 export -f CheckFileType
 export -f DetectActions
@@ -283,6 +297,7 @@ export -f GetFileType
 export -f IsValidShellScript
 export -f HasNoShebang
 export -f IsGenerated
+export -f IsNotSymbolicLink
 
 function RunAdditionalInstalls() {
 
@@ -293,9 +308,13 @@ function RunAdditionalInstalls() {
   ##################################
   # Run installs for Psalm and PHP #
   ##################################
-  if [ "${VALIDATE_PHP_PSALM}" == "true" ] && [ -e "${FILE_ARRAYS_DIRECTORY_PATH}/file-array-PHP_PSALM" ]; then
+  if [[ ("${VALIDATE_PHP:-"${VALIDATE_PHP_BUILTIN}"}" == "true" && -e "${FILE_ARRAYS_DIRECTORY_PATH}/file-array-PHP_BUILTIN") ]] ||
+    [[ ("${VALIDATE_PHP_BUILTIN}" == "true" && -e "${FILE_ARRAYS_DIRECTORY_PATH}/file-array-PHP_BUILTIN") ]] ||
+    [[ ("${VALIDATE_PHP_PHPCS}" == "true" && -e "${FILE_ARRAYS_DIRECTORY_PATH}/file-array-PHP_PHPCS") ]] ||
+    [[ ("${VALIDATE_PHP_PHPSTAN}" == "true" && -e "${FILE_ARRAYS_DIRECTORY_PATH}/file-array-PHP_PHPSTAN") ]] ||
+    [[ ("${VALIDATE_PHP_PSALM}" == "true" && -e "${FILE_ARRAYS_DIRECTORY_PATH}/file-array-PHP_PSALM") ]]; then
     # found PHP files and were validating it, need to composer install
-    info "Found PHP files to validate, and VALIDATE_PHP_PSALM is set to ${VALIDATE_PHP_PSALM}. Check if we need to run composer install"
+    info "Found PHP files to validate. Check if we need to run composer install"
     mapfile -t COMPOSER_FILE_ARRAY < <(find "${GITHUB_WORKSPACE}" -name composer.json 2>&1)
     debug "COMPOSER_FILE_ARRAY contents: ${COMPOSER_FILE_ARRAY[*]}"
     if [ "${#COMPOSER_FILE_ARRAY[@]}" -ne 0 ]; then
@@ -304,7 +323,10 @@ function RunAdditionalInstalls() {
         COMPOSER_PATH=$(dirname "${LINE}" 2>&1)
         info "Found Composer file: ${LINE}"
         local COMPOSER_CMD
-        if ! COMPOSER_CMD=$(cd "${COMPOSER_PATH}" && composer install --no-progress -q 2>&1); then
+        local COMPOSER_EXIT_STATUS
+        COMPOSER_CMD=$(cd "${COMPOSER_PATH}" && composer install --no-progress 2>&1)
+        COMPOSER_EXIT_STATUS=$?
+        if [ "${COMPOSER_EXIT_STATUS}" -ne 0 ]; then
           fatal "Failed to run composer install for ${COMPOSER_PATH}. Output: ${COMPOSER_CMD}"
         else
           info "Successfully ran composer install."

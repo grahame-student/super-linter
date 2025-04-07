@@ -4,7 +4,7 @@
 all: info docker test ## Run all targets.
 
 .PHONY: test
-test: info validate-container-image-labels docker-build-check docker-dev-container-build-check npm-audit test-lib inspec lint-codebase fix-codebase test-default-config-files test-actions-runner-debug test-actions-steps-debug test-runner-debug test-find lint-subset-files test-custom-ssl-cert test-non-default-workdir test-git-flags test-non-default-home-directory test-git-initial-commit test-git-merge-commit-push test-log-level test-use-find-and-ignore-gitignored-files test-linters-expect-failure-log-level-notice test-bash-exec-library-expect-success test-bash-exec-library-expect-failure test-save-super-linter-output test-save-super-linter-output-custom-path test-save-super-linter-custom-summary test-custom-gitleaks-log-level test-dont-save-super-linter-log-file test-dont-save-super-linter-output test-linter-command-options test-linters test-linters-fix-mode ## Run the test suite
+test: info validate-container-image-labels docker-build-check docker-dev-container-build-check npm-audit test-lib inspec lint-codebase fix-codebase test-default-config-files test-actions-runner-debug test-actions-steps-debug test-runner-debug test-find lint-subset-files test-custom-ssl-cert test-non-default-workdir test-git-flags test-non-default-home-directory test-git-initial-commit test-git-merge-commit-push test-git-merge-commit-push-tag test-log-level test-use-find-and-ignore-gitignored-files test-linters-expect-failure-log-level-notice test-bash-exec-library-expect-success test-bash-exec-library-expect-failure test-save-super-linter-output test-save-super-linter-output-custom-path test-save-super-linter-custom-summary test-custom-gitleaks-log-level test-dont-save-super-linter-log-file test-dont-save-super-linter-output test-linter-command-options test-github-push-event-multiple-commits test-linters test-linters-fix-mode ## Run the test suite
 
 # if this session isn't interactive, then we don't want to allocate a
 # TTY, which would fail, but if it is interactive, we do want to attach
@@ -35,12 +35,16 @@ IMAGE := $(CONTAINER_IMAGE_TARGET)
 
 # Default to stadard
 ifeq ($(IMAGE),)
-IMAGE := "standard"
+IMAGE := standard
+IMAGE_PREFIX :=
+endif
+ifeq ($(IMAGE),slim)
+IMAGE_PREFIX := slim-
 endif
 
 # Default to latest
 ifeq ($(SUPER_LINTER_TEST_CONTAINER_URL),)
-SUPER_LINTER_TEST_CONTAINER_URL := "ghcr.io/super-linter/super-linter:latest"
+SUPER_LINTER_TEST_CONTAINER_URL := "ghcr.io/super-linter/super-linter:${IMAGE_PREFIX}latest"
 endif
 
 ifeq ($(BUILD_DATE),)
@@ -53,14 +57,6 @@ endif
 
 ifeq ($(BUILD_VERSION),)
 BUILD_VERSION := $(shell git rev-parse HEAD)
-endif
-
-ifeq ($(FROM_INTERVAL_COMMITLINT),)
-FROM_INTERVAL_COMMITLINT := "HEAD~1"
-endif
-
-ifeq ($(TO_INTERVAL_COMMITLINT),)
-TO_INTERVAL_COMMITLINT := "HEAD"
 endif
 
 GITHUB_TOKEN_PATH := "$(CURDIR)/.github-personal-access-token"
@@ -82,11 +78,13 @@ info: ## Gather information about the runtime environment
 	echo "whoami: $$(whoami)"; \
 	echo "pwd: $$(pwd)"; \
 	echo "IMAGE:" $(IMAGE); \
+	echo "IMAGE_PREFIX: $(IMAGE_PREFIX)"; \
 	echo "Build date: ${BUILD_DATE}"; \
 	echo "Build revision: ${BUILD_REVISION}"; \
 	echo "Build version: ${BUILD_VERSION}"; \
-	echo "SUPER_LINTER_TEST_CONTAINER_URL:" $(SUPER_LINTER_TEST_CONTAINER_URL); \
-	echo "ls -ahl: $$(ls -ahl)"; \
+	echo "SUPER_LINTER_TEST_CONTAINER_URL: $(SUPER_LINTER_TEST_CONTAINER_URL)"; \
+	echo "ls -ahl:\n$$(ls -ahl)"; \
+	echo "Git log:\n$$(git log --all --graph --abbrev-commit --decorate --format=oneline)" \
 	docker images; \
 	docker ps; \
 	echo "Container image layers size:"; \
@@ -127,6 +125,15 @@ docker: docker-build-check check-github-token ## Build the container image
 		--build-arg BUILD_DATE=$(BUILD_DATE) \
 		--build-arg BUILD_REVISION=$(BUILD_REVISION) \
 		--build-arg BUILD_VERSION=$(BUILD_VERSION) \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:${IMAGE_PREFIX}latest-buildcache \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-base_image \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-clang-format \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-python-builder \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-npm-builder \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-tflint-plugins \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-lintr-installer \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-powershell-installer \
+		--cache-from type=registry,ref=ghcr.io/super-linter/super-linter:latest-buildcache-php-linters \
 		--secret id=GITHUB_TOKEN,src=$(GITHUB_TOKEN_PATH) \
 		--target $(IMAGE) \
 		-t $(SUPER_LINTER_TEST_CONTAINER_URL) .
@@ -353,7 +360,7 @@ lint-subset-files-enable-expensive-io-checks: ## Lint a small subset of files in
 		$(SUPER_LINTER_TEST_CONTAINER_URL)
 
 .PHONY: test-lib
-test-lib: test-globals-languages test-linter-rules test-build-file-list test-detect-files test-github-event test-setup-ssh test-validation test-output test-linter-commands test-linter-versions ## Test super-linter libs and globals
+test-lib: test-globals-languages test-linter-rules test-build-file-list test-get-github-variables test-detect-files test-github-event test-setup-ssh test-validation test-output test-linter-commands test-linter-versions ## Test super-linter libs and globals
 
 .PHONY: test-globals-languages
 test-globals-languages: ## Test globals/languages.sh
@@ -388,6 +395,15 @@ test-build-file-list: ## Test buildFileList
 		-v "$(CURDIR):/tmp/lint" \
 		-w /tmp/lint \
 		--entrypoint /tmp/lint/test/lib/buildFileListTest.sh \
+		--rm \
+		$(SUPER_LINTER_TEST_CONTAINER_URL)
+
+.PHONY: test-get-github-variables
+test-get-github-variables: ## Test getGithubVariables
+	docker run \
+		-v "$(CURDIR):/tmp/lint" \
+		-w /tmp/lint \
+		--entrypoint /tmp/lint/test/lib/getGitHubVariablesTest.sh \
 		--rm \
 		$(SUPER_LINTER_TEST_CONTAINER_URL)
 
@@ -559,6 +575,27 @@ test-git-merge-commit-push: ## Run super-linter against a repository that has me
 		"run_test_case_merge_commit_push" \
 		"$(IMAGE)"
 
+.PHONY: test-git-merge-commit-push-tag
+test-git-merge-commit-push-tag: ## Run super-linter against a repository that has merge commits and pushed a tag
+	$(CURDIR)/test/run-super-linter-tests.sh \
+		$(SUPER_LINTER_TEST_CONTAINER_URL) \
+		"run_test_case_merge_commit_push_tag" \
+		"$(IMAGE)"
+
+.PHONY: test-github-pr-event-multiple-commits
+test-github-pr-event-multiple-commits: ## Run super-linter against a repository that simulates a pull request event with multiple commits
+	$(CURDIR)/test/run-super-linter-tests.sh \
+		$(SUPER_LINTER_TEST_CONTAINER_URL) \
+		"run_test_case_github_pr_event_multiple_commits" \
+		"$(IMAGE)"
+
+.PHONY: test-github-push-event-multiple-commits
+test-github-push-event-multiple-commits: ## Run super-linter against a repository that simulates a push event with multiple commits
+	$(CURDIR)/test/run-super-linter-tests.sh \
+		$(SUPER_LINTER_TEST_CONTAINER_URL) \
+		"run_test_case_github_push_event_multiple_commits" \
+		"$(IMAGE)"
+
 .PHONY: test-use-find-and-ignore-gitignored-files
 test-use-find-and-ignore-gitignored-files: ## Run super-linter with USE_FIND_ALGORITHM=true and IGNORE_GITIGNORED_FILES=true
 	$(CURDIR)/test/run-super-linter-tests.sh \
@@ -650,6 +687,6 @@ open-shell-dev-container: build-dev-container-image ## Open a shell in the dev t
 		--interactive \
 		--entrypoint /bin/bash \
 		--rm \
-		-v "$(CURDIR)/dev-dependencies/package-lock.json":/package-lock.json \
-		-v "$(CURDIR)/dev-dependencies/package.json":/package.json \
+		-v "$(CURDIR)/dev-dependencies/package-lock.json":/app/package-lock.json \
+		-v "$(CURDIR)/dev-dependencies/package.json":/app/package.json \
 		$(DEV_CONTAINER_URL)
